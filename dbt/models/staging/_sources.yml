@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: epd
+    description: >
+      English Prescribing Dataset (NHSBSA), aggregated server-side to
+      month x NHS region x BNF chapter by scripts/fetch_epd.py.
+    meta:
+      external_location: >-
+        read_csv('../data/raw/{name}/*.csv', header=true, union_by_name=true)
+    freshness:
+      warn_after: {count: 100, period: day}
+    loaded_at_field: "strptime(replace(cast(YEAR_MONTH as varchar), '-', '') || '01', '%Y%m%d')"
+    tables:
+      - name: epd
+        columns:
+          - name: YEAR_MONTH
+            tests: [not_null]
+          - name: BNF_CHAPTER_PLUS_CODE
+            tests: [not_null]
+          - name: ITEMS
+            tests: [not_null, non_negative]
+          - name: ACTUAL_COST
+            tests: [not_null]

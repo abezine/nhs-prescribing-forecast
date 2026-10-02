@@ -1,0 +1,36 @@
+name: monthly-refresh
+
+# NHSBSA publishes a new month around the 20th, with a two-month lag.
+on:
+  schedule:
+    - cron: "0 6 25 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt && pip install -e .
+      - uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: epd-raw-${{ github.run_id }}
+          restore-keys: epd-raw-
+      - run: python scripts/fetch_epd.py --start 202101
+      - run: cd dbt && dbt source freshness --profiles-dir . && dbt build --profiles-dir .
+      - run: python -m rxforecast.train
+      - name: Commit updated results
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add reports/
+          git diff --cached --quiet || git commit -m "Monthly refresh: $(date +%Y-%m)"
+          git push

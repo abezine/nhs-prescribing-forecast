@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: stg_epd__region_chapter_month
+    columns:
+      - name: month_start
+        tests: [not_null]
+      - name: bnf_chapter_code
+        tests:
+          - not_null
+          - matches_pattern:
+              arguments:
+                pattern: '^[0-9]{2}$'
+      - name: items
+        tests: [not_null, non_negative]
+      - name: actual_cost_gbp
+        tests: [not_null]

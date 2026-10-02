@@ -1,0 +1,24 @@
+name: rx_forecast
+version: "1.0.0"
+config-version: 2
+profile: rx_forecast
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # BNF chapters 01-15 are medicines; 18-23 are preparations/appliances/dressings
+  include_chapters: ["01","02","03","04","05","06","07","08","09","10","11","12","13","14","15"]
+  expected_regions: ["Y56","Y58","Y59","Y60","Y61","Y62","Y63"]
+
+models:
+  rx_forecast:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
