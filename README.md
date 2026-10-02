@@ -18,13 +18,31 @@ flowchart LR
 
 ## Results
 
-See [`reports/evaluation.md`](reports/evaluation.md) (regenerated every run).
+Rolling-origin backtest over 12 origins (May 2025 to April 2026), horizons 1 to 3 months,
+105 series, data January 2021 to July 2026. Full tables in [`reports/evaluation.md`](reports/evaluation.md).
 
-| model | WAPE | MASE |
-|---|---:|---:|
-| Gradient boosting | _fill in_ | _fill in_ |
-| Seasonal naive | _fill in_ | _fill in_ |
-| Last value | _fill in_ | _fill in_ |
+| model | MAE (items) | WAPE | MASE |
+|---|---:|---:|---:|
+| **Gradient boosting** | **30,125** | **3.09%** | **0.819** |
+| Seasonal naive | 36,310 | 3.73% | 0.876 |
+| Last value | 54,885 | 5.64% | 1.471 |
+
+The model cuts error by **17% relative to the best baseline** (seasonal naive).
+The gain is modest, which is expected: prescribing volume is strongly seasonal,
+so "same month last year" is already a hard benchmark.
+
+**Where the model wins and where it doesn't**
+
+- It beats seasonal naive in **10 of 15 BNF chapters**, including all high-volume ones
+  (Cardiovascular, Central Nervous System, Endocrine, Gastro-Intestinal).
+- It loses in **Eye, Ear/Nose/Oropharynx, Skin and Anaesthesia** by 0.2 to 0.6 percentage points.
+  These are smaller chapters where the yearly pattern repeats cleanly and the model adds noise.
+- It fails clearly on **Immunological Products and Vaccines** (23.9% vs 9.2% WAPE).
+  Volume there is driven by vaccination campaigns whose timing and scale change from
+  year to year, which lagged volume features cannot anticipate. "Last value" scores 127.6%,
+  which shows how spiky the series is.
+- Results per horizon are scored on different target months, so the small differences between
+  h1, h2 and h3 are not a like-for-like comparison of horizon difficulty.
 
 ## Quickstart
 
@@ -38,11 +56,17 @@ make app       # dashboard
 
 Offline or in CI: `make ci` runs the same pipeline on synthetic data with the identical schema.
 
+On Windows without `make`, run the commands from the Makefile directly.
+
 ## Design decisions
 
 **Aggregate at the source.** Each EPD month has ~17M rows. `fetch_epd.py` pushes a
-`GROUP BY` to the portal's SQL endpoint and stores ~200 rows per month. Loads are incremental:
+`GROUP BY` to the portal's SQL endpoint and stores ~165 rows per month. Loads are incremental:
 existing months are skipped.
+
+**Defensive extraction.** The March 2025 release stores `TOTAL_QUANTITY` as text instead of a
+number, which broke the aggregation query. Every numeric column is now cast explicitly, failed casts
+are counted on the server, and a month with any failed cast is rejected instead of being summed wrong.
 
 **dbt layers.** Staging normalises types and flags prescriptions that cannot be attributed to a region.
 The intermediate model builds a complete month × series grid, so gaps stay visible as `NULL`
@@ -57,20 +81,23 @@ instead of being silently zero-filled. Marts are what Python reads.
 - implausible cost per item (warn)
 - source freshness: latest month older than 100 days (warn)
 
-**Evaluation.** Rolling-origin backtest over 12 origins. At each origin the model trains only on
-targets up to that month (asserted in code and unit-tested), then predicts 1 to 3 months ahead.
-Two baselines, seasonal naive and last value, are scored on exactly the same rows. Metrics:
-MAE, WAPE, and MASE scaled by in-sample seasonal-naive error, reported overall, per horizon
-and per BNF chapter, including chapters where the model loses.
+**Evaluation.** At each origin the model trains only on targets up to that month (asserted in code
+and unit-tested), then predicts 1 to 3 months ahead. Both baselines are scored on exactly the same rows.
+Metrics: MAE, WAPE, and MASE scaled by in-sample seasonal-naive error, reported overall, per horizon
+and per BNF chapter, including the chapters where the model loses.
 
 **Model.** One `HistGradientBoostingRegressor` across all series and horizons (direct strategy,
 horizon as a feature). It predicts the log ratio of the target to the recent 3-month level,
 which puts series of very different size on one scale. Loss is absolute error, matching the reported metrics.
 
-## Limitations
+## Limitations and next steps
 
+- **Vaccines need a different approach.** Campaign-driven demand should be modelled with campaign
+  calendars, or fall back to seasonal naive for that chapter.
+- **Working days are missing.** Prescription volume depends on bank holidays and weekdays per month;
+  adding them as a feature is the most likely improvement.
 - BNF codes and region boundaries change over time; the chapter level is the most stable grain.
-- COVID-era months (2021) distort seasonality; the backtest window starts after them.
+- 2021 data still carries COVID-era effects; the backtest window starts in 2025.
 - Item counts are not patients or doses.
 
 ## Data
